@@ -106,9 +106,12 @@ Agent 调用 approve 脚本
 
 ## 触发条件
 
-- 小步迭代开发，每次 commit 前审查
-- 需要强制 self-review 的场景
-- 多 Agent 并行开发，需要统一提交规范
+| 场景 | 触发方式 | 预期行为 |
+|------|---------|---------|
+| **小步迭代** | 每次 `git commit` 前 | Hook 自动拦截，等待 approve |
+| **Bug 修复后** | 修复完成后首次 commit | 检查 diff 是否有漏审 |
+| **多 Agent 并行** | Agent A 和 Agent B 同时提交 | 同一分支串行（flock），不同分支并行 |
+| **长时间未 commit** | 超过 7 天未审查 | TTL 自动清理旧状态 |
 
 ---
 
@@ -314,36 +317,35 @@ find "$REAL_HOME/.hermes/review-states" -type d -empty -delete
 
 ## 反例与黑名单
 
-> ⚠️ **dim9 必须**：明确列出「不要做什么」，避免误用导致问题
+> ⚠️ **dim9 必须**：明确列出「不要做什么」，避免误用导致死循环、数据丢失
 
 ### ❌ 禁止行为
 
-| 禁止行为 | 原因 | 正确做法 |
+| 禁止行为 | 后果 | 正确做法 |
 |---------|------|----------|
-| ❌ 在 hook 中执行 `git commit` | 会递归触发 hook，导致死循环 | 只读取状态，不执行 commit |
-| ❌ 直接修改 state.json | 可能导致状态不一致 | 使用 approve 脚本或 reset 命令 |
-| ❌ 跳过 approve 直接 commit | 绕过了审查机制 | 必须先 approve |
-| ❌ 在 PENDING_REVIEW 状态下删除 state.json | 会丢失审查上下文 | 使用 reset 命令或等待 TTL 自动清理 |
-| ❌ 多仓库共享同一个状态目录 | 会导致状态混淆 | 每个仓库有独立的 REPO_HASH |
+| ❌ 在 hook 中执行 `git commit` | 递归触发 hook → 死循环 | 只读取状态，不执行 commit |
+| ❌ 直接修改 state.json | 状态不一致 → 审查失效 | 使用 approve 脚本或 reset 命令 |
+| ❌ 跳过 approve 直接 commit | 绕过审查机制 → bug 上线 | 必须先 approve 再 commit |
+| ❌ 在 PENDING_REVIEW 状态下删除 state.json | 丢失审查上下文 | 使用 reset 命令或等待 TTL 清理 |
+| ❌ 多仓库共享同一个状态目录 | 状态混淆 → 误判 | 每个仓库有独立的 REPO_HASH |
 
 ### ⚠️ 危险操作
 
 | 操作 | 风险 | 安全做法 |
 |------|------|----------|
-| `git push --force` | 可能覆盖远程状态 | 先确认远程没有未完成的审查 |
-| 删除 `~/.hermes/review-states` | 会丢失所有审查状态 | 确认所有审查都已完成后再删除 |
-| 同时在多个分支工作 | 可能混淆分支状态 | 每个分支独立审查 |
+| `git push --force` | 覆盖远程状态 | 先确认远程无未完成审查 |
+| 删除 `~/.hermes/review-states` | 丢失所有审查状态 | 确认所有审查完成后删除 |
+| 同时在多个分支工作 | 分支状态混淆 | 每个分支独立审查状态 |
 
 ### 🔴 失败模式与处理
 
 | 失败场景 | 现象 | 处理方式 |
 |----------|------|----------|
-| flock 超时 | 返回 "另一个 commit 正在审查中" | 等待锁释放或手动清理锁文件 |
+| flock 超时 | "另一个 commit 正在审查中" | 等待锁释放或手动清理锁文件 |
 | state.json 损坏 | JSON parse error | 删除 state.json 重新开始审查 |
-| approve 脚本路径错误 | "approve 脚本不存在" | 确认脚本路径或使用绝对路径 |
+| approve 脚本路径错误 | "approve 脚本不存在" | 使用绝对路径 |
 | cwd 不在 git 仓库 | "fatal: not a git repository" | 确认 payload 中 cwd 正确 |
 | git 输出包含换行符 | hash 计算错误 | 使用 `echo -n` 计算 hash |
-| 未初始化的仓库 | "Your branch name is ..." 警告 | 使用 `git config init.defaultBranch` 设置 |
 
 ---
 

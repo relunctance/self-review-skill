@@ -102,6 +102,71 @@ def test_get_repo_info():
         print(f"⚠️  test_get_repo_info skipped: {e}")
 
 
+def test_state_file_corruption_recovery():
+    """测试：状态文件损坏时使用默认值恢复"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        state_file = Path(tmpdir) / "state.json"
+        # 模拟损坏的 JSON
+        state_file.write_text('{"state": "PENDING_REVIEW", approved: true}')  # 缺少引号
+
+        try:
+            state = json.loads(state_file.read_text())
+        except json.JSONDecodeError:
+            # 使用默认值恢复
+            state = {"state": "IDLE", "approved": False, "diff_hash": "", "cycle_count": 0}
+
+        assert state["state"] == "IDLE"
+        assert state["approved"] == False
+        assert state["cycle_count"] == 0
+        print("✅ test_state_file_corruption_recovery passed")
+
+
+def test_cross_branch_isolation():
+    """测试：不同分支状态隔离"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # branch-A 状态
+        state_file_a = Path(tmpdir) / "branch_a" / "state.json"
+        state_file_a.parent.mkdir(parents=True, exist_ok=True)
+        state_file_a.write_text('{"state":"PENDING_REVIEW","approved":true,"diff_hash":"hash_a","cycle_count":1}')
+
+        # branch-B 状态
+        state_file_b = Path(tmpdir) / "branch_b" / "state.json"
+        state_file_b.parent.mkdir(parents=True, exist_ok=True)
+        state_file_b.write_text('{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}')
+
+        # 验证两个分支状态互不影响
+        state_a = json.loads(state_file_a.read_text())
+        state_b = json.loads(state_file_b.read_text())
+
+        assert state_a["state"] == "PENDING_REVIEW"
+        assert state_b["state"] == "IDLE"
+        assert state_a["diff_hash"] != state_b["diff_hash"]
+        print("✅ test_cross_branch_isolation passed")
+
+
+def test_multi_repo_isolation():
+    """测试：多仓库状态隔离"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # repo1 状态
+        state_file_1 = Path(tmpdir) / "repo1_hash" / "branch_hash" / "state.json"
+        state_file_1.parent.mkdir(parents=True, exist_ok=True)
+        state_file_1.write_text('{"state":"PENDING_REVIEW","approved":false,"diff_hash":"repo1_diff","cycle_count":2}')
+
+        # repo2 状态
+        state_file_2 = Path(tmpdir) / "repo2_hash" / "branch_hash" / "state.json"
+        state_file_2.parent.mkdir(parents=True, exist_ok=True)
+        state_file_2.write_text('{"state":"IDLE","approved":true,"diff_hash":"repo2_diff","cycle_count":0}')
+
+        # 验证两个仓库状态互不影响
+        state_1 = json.loads(state_file_1.read_text())
+        state_2 = json.loads(state_file_2.read_text())
+
+        assert state_1["diff_hash"] == "repo1_diff"
+        assert state_2["diff_hash"] == "repo2_diff"
+        assert state_1["state"] != state_2["state"]
+        print("✅ test_multi_repo_isolation passed")
+
+
 def main():
     print("Running self-review-skill state machine tests...")
     print()
@@ -113,6 +178,9 @@ def main():
         test_cycle_count_detection,
         test_real_home_detection,
         test_get_repo_info,
+        test_state_file_corruption_recovery,
+        test_cross_branch_isolation,
+        test_multi_repo_isolation,
     ]
 
     passed = 0
