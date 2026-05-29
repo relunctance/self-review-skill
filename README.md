@@ -1,7 +1,7 @@
 # self-review-skill
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com/relunctance/self-review-skill)
+[![Version](https://img.shields.io/badge/Version-1.1.0-green.svg)](https://github.com/relunctance/self-review-skill)
 [![Platforms](https://img.shields.io/badge/Platforms-Hermes%20%7C%20WSL-blue.svg)](https://github.com/relunctance)
 [![Category](https://img.shields.io/badge/Category-Development%20Safety-blue.svg)](#)
 [![Stage: Production](https://img.shields.io/badge/Stage-Production-brightgreen)](https://github.com/relunctance/self-review-skill)

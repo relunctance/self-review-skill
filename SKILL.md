@@ -1,7 +1,7 @@
 ---
 name: self-review-skill
 description: 每次 commit 前强制审查改动，减少 bug 率
-version: "1.0.0"
+version: "1.1.0"
 author: relunctance
 license: MIT
 category: development
