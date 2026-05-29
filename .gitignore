@@ -1,0 +1,9 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Test artifacts
+.state.json.bak
