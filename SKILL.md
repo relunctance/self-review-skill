@@ -126,6 +126,7 @@ git clone https://github.com/relunctance/self-review-skill.git ~/self-review-ski
 # 2. Make scripts executable
 chmod +x ~/self-review-skill/hooks/self-review-hook.sh
 chmod +x ~/self-review-skill/scripts/review_approve.py
+chmod +x ~/self-review-skill/scripts/review_reset.py
 
 # 3. Register hook via hermes CLI
 hermes hooks add --event pre_tool_call \
@@ -182,6 +183,18 @@ Agent: git commit -m "..."
 
 > ⚠️ **关键检查点**：approve 前必须确认所有改动已审查完毕，避免漏审。
 
+### 重置审查状态
+
+审查过程中需要放弃当前审查时，使用 reset 命令：
+
+```bash
+# 重置当前仓库的审查状态
+python3 ~/self-review-skill/scripts/review_reset.py
+
+# 指定仓库路径
+python3 ~/self-review-skill/scripts/review_reset.py --cwd /path/to/repo
+```
+
 ### Agent 调用 approve 的方式
 
 审查完成后，通过 `execute_code` 工具执行：
@@ -207,7 +220,8 @@ self-review-skill/
 ├── hooks/
 │   └── self-review-hook.sh    # 核心 hook 脚本
 ├── scripts/
-│   └── review_approve.py      # approve 脚本
+│   ├── review_approve.py      # approve 脚本
+│   └── review_reset.py        # reset 脚本（重置审查状态）
 ├── tests/
 │   ├── unit/
 │   │   ├── test_state_machine.py
