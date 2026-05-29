@@ -1,13 +1,22 @@
 # self-review-skill
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Hermes Platform](https://img.shields.io/badge/Platform-Hermes-green)](https://github.com/relunctance)
+[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)](https://github.com/relunctance/self-review-skill)
+[![Platforms](https://img.shields.io/badge/Platforms-Hermes%20%7C%20WSL-blue.svg)](https://github.com/relunctance)
+[![Category](https://img.shields.io/badge/Category-Development%20Safety-blue.svg)](#)
 [![Stage: Production](https://img.shields.io/badge/Stage-Production-brightgreen)](https://github.com/relunctance/self-review-skill)
 [![Last Updated](https://img.shields.io/badge/Updated-2026--05--30-orange)](https://github.com/relunctance/self-review-skill)
 
 > 🤖 **每次 commit 前强制审查改动，减少 bug 率**
 >
 > 小步迭代开发模式：改动越小 → 审查越快 → Bug 发现率越高
+
+## 🎯 触发条件
+
+当需要进行以下操作时使用：
+- gql-bots 项目中任何 commit 前
+- 需要确保代码改动经过自检
+- 需要记录每次 commit 的审查轨迹
 
 ## 🎯 核心功能
 
@@ -65,9 +74,8 @@ hermes hooks add --event pre_tool_call \
 2. Hook 会 **block** 并提示审查
 3. Agent **读取** `~/.hermes/review-states/{hash}/context.json` 审查改动
 4. **无 bug** 时，执行 approve：
-   ```python
-   import subprocess
-   subprocess.run(["python3", "~/self-review-skill/scripts/review_approve.py"])
+   ```bash
+   echo '{"cwd":"<repo_path>"}' | python3 ~/self-review-skill/scripts/review_approve.py
    ```
 5. **再次 commit** → 通过 ✅
 
@@ -84,7 +92,7 @@ self-review-skill/
 │   └── review_approve.py      # approve 脚本
 └── tests/
     ├── unit/                   # 单元测试
-    └── integration/             # 集成测试
+    └── integration/            # 集成测试
 ```
 
 ## 🧪 测试
@@ -125,6 +133,15 @@ python3 -m pytest tests/unit/ -v && bash tests/unit/*.sh && bash tests/integrati
 
 Hook 脚本自动清理 **7 天前**的状态文件。
 
+## 🐛 踩坑
+
+| 坑 | 解决 |
+|----|------|
+| git 命令输出包含换行符 | 使用 `echo -n` 计算 hash |
+| Hook 运行在 skill 目录而非 git 仓库 | 从 payload cwd 字段获取实际路径 |
+| 分支检测在无 commit 时失败 | 使用 `git branch --show-current` |
+| Python 和 Shell 路径 hash 不一致 | 统一使用 `echo -n \| md5sum` |
+
 ## 📚 参考
 
 - [gql-bots #147](https://github.com/relunctance/gql-bots/issues/147) — 设计文档
@@ -132,6 +149,10 @@ Hook 脚本自动清理 **7 天前**的状态文件。
 - [ECC hookify](https://github.com/relunctance/ecc) — 参考实现
 
 ## 📝 Changelog
+
+### v1.0.1 (2026-05-30)
+
+- fix: 修复 git 命令输出换行符导致的 hash 不一致
 
 ### v1.0.0 (2026-05-30)
 
