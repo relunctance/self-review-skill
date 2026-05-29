@@ -4,11 +4,11 @@ self-review-skill: approve 脚本
 
 功能：批准当前待审查的改动。
 
-Agent 调用方式（通过 execute_code 工具）：
+调用方式：
     python3 /path/to/review_approve.py
 
-或者手动在终端执行：
-    python3 /path/to/review_approve.py
+或者传入 JSON payload（从 stdin）获取 cwd：
+    echo '{"cwd":"/path/to/repo"}' | python3 /path/to/review_approve.py
 """
 
 import hashlib
@@ -37,19 +37,41 @@ def get_real_home() -> str:
     ).split(":")[5]
 
 
-def get_repo_info() -> tuple[str, str, str, str]:
-    """获取仓库和分支信息"""
+def get_repo_info(cwd: str | None = None) -> tuple[str, str, str, str]:
+    """获取仓库和分支信息
+
+    Args:
+        cwd: 如果提供，在此目录下执行 git 命令
+
+    分支检测逻辑需与 hooks/self-review-hook.sh 保持一致：
+    - 使用 git symbolic-ref --short HEAD
+    - 正常分支：返回分支名（如 master）
+    - detached HEAD 或无 commits：返回 detached
+    """
+    git_cwd = cwd if cwd and os.path.isdir(cwd) else os.getcwd()
+
     try:
         repo_path = subprocess.check_output(
             ["git", "rev-parse", "--show-toplevel"],
             stderr=subprocess.DEVNULL,
-            text=True
+            text=True,
+            cwd=git_cwd
         ).strip()
-        branch = subprocess.check_output(
-            ["git", "branch", "--show-current"],
-            stderr=subprocess.DEVNULL,
-            text=True
-        ).strip() or "detached"
+
+        # 使用与 hook 相同的分支检测逻辑
+        # 使用 git symbolic-ref --short HEAD 获取分支名
+        # - 正常分支：返回分支名（如 master）
+        # - detached HEAD 或无 commits：失败
+        branch_result = subprocess.run(
+            ["git", "symbolic-ref", "--short", "HEAD"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            cwd=git_cwd
+        )
+        if branch_result.returncode == 0 and branch_result.stdout.strip():
+            branch = branch_result.stdout.strip()
+        else:
+            branch = "detached"
+
         repo_hash = hashlib.md5(repo_path.encode()).hexdigest()[:8]
         branch_hash = hashlib.md5(branch.encode()).hexdigest()[:8]
         return repo_path, branch, repo_hash, branch_hash
@@ -58,13 +80,39 @@ def get_repo_info() -> tuple[str, str, str, str]:
         sys.exit(1)
 
 
+def try_read_cwd_from_stdin() -> str | None:
+    """尝试从 stdin 读取 JSON payload 并提取 cwd 字段"""
+    try:
+        # 检查 stdin 是否有数据
+        if sys.stdin.isatty():
+            return None
+
+        # 读取 stdin
+        stdin_data = sys.stdin.read().strip()
+        if not stdin_data:
+            return None
+
+        payload = json.loads(stdin_data)
+        cwd = payload.get("cwd", "")
+        if cwd and os.path.isdir(cwd):
+            return cwd
+        return None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def main():
     try:
         # 获取真实 home
         real_home = get_real_home()
 
+        # 尝试从 stdin 获取 cwd
+        cwd = try_read_cwd_from_stdin()
+        if cwd:
+            logger.info(f"从 stdin payload 获取 cwd: {cwd}")
+
         # 获取仓库和分支信息
-        repo_path, branch, repo_hash, branch_hash = get_repo_info()
+        repo_path, branch, repo_hash, branch_hash = get_repo_info(cwd)
 
         # 构建状态文件路径
         state_dir = Path(real_home) / ".hermes" / "review-states" / repo_hash / branch_hash

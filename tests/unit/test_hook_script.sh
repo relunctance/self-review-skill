@@ -4,7 +4,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+# 从 tests/unit/ 向上两级到达项目根目录
+SKILL_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HOOK_SCRIPT="$SKILL_DIR/hooks/self-review-hook.sh"
 
 # 获取真实 home
@@ -13,12 +14,17 @@ REAL_HOME=$(getent passwd "$(whoami)" | cut -d: -f6)
 echo "=== self-review-skill Hook 脚本测试 ==="
 echo ""
 
+# 清理之前的状态
+rm -rf "$REAL_HOME/.hermes/review-states/"* 2>/dev/null || true
+rm -f "$REAL_HOME/.hermes/logs/pre-tool-hook.log" 2>/dev/null || true
+
 test_blocks_non_git_commands() {
-    echo "测试：非 git commit 命令应该跳过"
+    echo "测试 1: 非 git commit 命令应该跳过"
     payload='{"tool_input":{"command":"ls -la"}}'
     result=$(echo "$payload" | bash "$HOOK_SCRIPT" 2>/dev/null || echo "{}")
     if [ "$result" = "{}" ]; then
         echo "✅ PASSED: 非 git 命令被正确跳过"
+        return 0
     else
         echo "❌ FAILED: 期望 {}，实际 $result"
         return 1
@@ -27,79 +33,85 @@ test_blocks_non_git_commands() {
 
 test_allows_empty_staged() {
     echo ""
-    echo "测试：无 staged 内容应该跳过"
+    echo "测试 2: 无 staged 内容应该跳过"
 
     # 创建临时 git 仓库
     TESTDIR=$(mktemp -d)
-    cd "$TESTDIR"
-    git init -q
+    (
+        set -e
+        cd "$TESTDIR"
+        git init -q
+        git config init.defaultBranch main 2>/dev/null || true
 
-    # 无 staged 内容
-    payload='{"tool_input":{"command":"git commit -m \"empty\""}}'
-    result=$(echo "$payload" | bash "$HOOK_SCRIPT" 2>/dev/null || echo "{}")
-
-    # 清理
-    rm -rf "$TESTDIR"
-
-    if [ "$result" = "{}" ]; then
-        echo "✅ PASSED: 无 staged 内容被正确跳过"
-    else
-        echo "❌ FAILED: 期望 {}，实际 $result"
-        return 1
-    fi
+        # 无 staged 内容
+        payload='{"tool_input":{"command":"git commit -m \"empty\""}}'
+        result=$(echo "$payload" | bash "$HOOK_SCRIPT" 2>/dev/null || echo "{}")
+        if [ "$result" = "{}" ]; then
+            echo "✅ PASSED: 无 staged 内容被正确跳过"
+        else
+            echo "❌ FAILED: 期望 {}，实际 $result"
+            exit 1
+        fi
+    )
+    local ret=$?
+    rm -rf "$TESTDIR" 2>/dev/null || true
+    return $ret
 }
 
 test_blocks_new_commit() {
     echo ""
-    echo "测试：有 staged 内容的 commit 应该被 block"
+    echo "测试 3: 有 staged 内容的 commit 应该被 block"
 
     # 创建临时 git 仓库
     TESTDIR=$(mktemp -d)
-    cd "$TESTDIR"
-    git init -q
-    echo "hello" > file.txt
-    git add file.txt
+    (
+        set -e
+        cd "$TESTDIR"
+        git init -q
+        git config init.defaultBranch main 2>/dev/null || true
+        echo "hello" > file.txt
+        git add file.txt
 
-    payload='{"tool_input":{"command":"git commit -m \"first\""}}'
-    result=$(echo "$payload" | bash "$HOOK_SCRIPT" 2>/dev/null || echo "{}")
-
-    # 清理
-    rm -rf "$TESTDIR"
-    # 清理测试状态
-    rm -rf "$REAL_HOME/.hermes/review-states/*" 2>/dev/null || true
-
-    action=$(echo "$result" | jq -r '.action // empty' 2>/dev/null || echo "")
-    if [ "$action" = "block" ]; then
-        echo "✅ PASSED: 新 commit 被正确 block"
-    else
-        echo "❌ FAILED: 期望 block，实际 $result"
-        return 1
-    fi
+        payload='{"tool_input":{"command":"git commit -m \"first\""}}'
+        result=$(echo "$payload" | bash "$HOOK_SCRIPT" 2>/dev/null || echo "{}")
+        action=$(echo "$result" | jq -r '.action // empty' 2>/dev/null || echo "")
+        if [ "$action" = "block" ]; then
+            echo "✅ PASSED: 新 commit 被正确 block"
+        else
+            echo "❌ FAILED: 期望 block，实际 $result"
+            exit 1
+        fi
+    )
+    local ret=$?
+    rm -rf "$TESTDIR" 2>/dev/null || true
+    return $ret
 }
 
 test_hook_log_created() {
     echo ""
-    echo "测试：Hook 触发后应该创建日志"
+    echo "测试 4: Hook 触发后应该创建日志"
 
     LOG_FILE="$REAL_HOME/.hermes/logs/pre-tool-hook.log"
     rm -f "$LOG_FILE" 2>/dev/null || true
 
     # 创建临时 git 仓库
     TESTDIR=$(mktemp -d)
-    cd "$TESTDIR"
-    git init -q
-    echo "hello" > file.txt
-    git add file.txt
+    (
+        set -e
+        cd "$TESTDIR"
+        git init -q
+        git config init.defaultBranch main 2>/dev/null || true
+        echo "hello" > file.txt
+        git add file.txt
 
-    payload='{"tool_input":{"command":"git commit -m \"log test\""}}'
-    echo "$payload" | bash "$HOOK_SCRIPT" >/dev/null 2>&1 || true
-
-    # 清理
-    rm -rf "$TESTDIR"
-    rm -rf "$REAL_HOME/.hermes/review-states/*" 2>/dev/null || true
+        payload='{"tool_input":{"command":"git commit -m \"log test\""}}'
+        echo "$payload" | bash "$HOOK_SCRIPT" >/dev/null 2>&1 || true
+    )
+    rm -rf "$TESTDIR" 2>/dev/null || true
 
     if [ -f "$LOG_FILE" ]; then
         echo "✅ PASSED: Hook 日志已创建"
+        return 0
     else
         echo "❌ FAILED: Hook 日志未创建"
         return 1
@@ -114,10 +126,13 @@ test_allows_empty_staged || failed=$((failed+1))
 test_blocks_new_commit || failed=$((failed+1))
 test_hook_log_created || failed=$((failed+1))
 
+# 清理
+rm -rf "$REAL_HOME/.hermes/review-states/"* 2>/dev/null || true
+
 echo ""
 echo "=== 测试结果 ==="
 if [ $failed -eq 0 ]; then
-    echo "✅ 全部通过 ($failed failed)"
+    echo "✅ 全部通过"
     exit 0
 else
     echo "❌ $failed 个测试失败"

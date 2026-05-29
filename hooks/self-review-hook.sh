@@ -36,8 +36,21 @@ fi
 
 log_hook "INFO" "$cmd" "triggered" "hook triggered"
 
+# === 从 payload 获取工作目录 ===
+# Hermes 在 payload 中提供了 cwd 字段，优先使用它
+# 格式：{"tool_input":{"command":"..."}, "cwd":"/path/to/repo", ...}
+PAYLOAD_CWD=$(echo "$payload" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+
 # === 检查是否是 git 仓库 ===
-REPO_PATH=$(git rev-parse --show-toplevel 2>/dev/null || echo "unknown")
+# 优先使用 payload 中的 cwd，否则使用当前目录
+if [ -n "$PAYLOAD_CWD" ] && [ -d "$PAYLOAD_CWD" ]; then
+    REPO_PATH=$(git -C "$PAYLOAD_CWD" rev-parse --show-toplevel 2>/dev/null || echo "unknown")
+else
+    # 降级：使用当前目录
+    REPO_PATH=$(git -C . rev-parse --show-toplevel 2>/dev/null || echo "unknown")
+    PAYLOAD_CWD="."  # 降级时使用当前目录
+fi
+
 if [ "$REPO_PATH" = "unknown" ]; then
     log_hook "WARN" "$cmd" "skip" "not a git repository"
     printf '{}\n'
@@ -45,9 +58,15 @@ if [ "$REPO_PATH" = "unknown" ]; then
 fi
 
 # === 隔离：仓库 + 分支 + 锁 ===
-REPO_HASH=$(echo "$REPO_PATH" | md5sum | cut -d' ' -f1 | cut -c1-8)
-BRANCH=$(git branch --show-current 2>/dev/null || echo "detached")
-BRANCH_HASH=$(echo "$BRANCH" | md5sum | cut -d' ' -f1 | cut -c1-8)
+# 注意：git 命令输出可能包含换行符，必须用 echo -n 计算 hash
+REPO_HASH=$(echo -n "$REPO_PATH" | md5sum | cut -d' ' -f1 | cut -c1-8)
+# 使用 git -C "$PAYLOAD_CWD" 获取分支名
+# - 有 commit 后：返回分支名（如 master, main）
+# - 无 commit 时：返回空字符串，此时用 "detached"
+BRANCH=$(git -C "$PAYLOAD_CWD" branch --show-current 2>/dev/null || echo "detached")
+[ -z "$BRANCH" ] && BRANCH="detached"
+# 注意：BRANCH 变量可能包含换行符，必须用 echo -n 计算 hash
+BRANCH_HASH=$(echo -n "$BRANCH" | md5sum | cut -d' ' -f1 | cut -c1-8)
 STATE_DIR="$REAL_HOME/.hermes/review-states/$REPO_HASH/$BRANCH_HASH"
 mkdir -p "$STATE_DIR"
 
@@ -62,7 +81,7 @@ flock -w 30 3 || {
 }
 
 # === 检查是否有 staged 内容 ===
-STAGED=$(git diff --cached --stat 2>/dev/null)
+STAGED=$(git -C "$PAYLOAD_CWD" diff --cached --stat 2>/dev/null)
 if [ -z "$STAGED" ]; then
     # 无 staged 内容，跳过检查
     log_hook "INFO" "$cmd" "skip" "no staged content"
@@ -84,8 +103,9 @@ CURRENT_STATE=$(echo "$STATE" | jq -r '.state')
 APPROVED=$(echo "$STATE" | jq -r '.approved')
 CYCLE_COUNT=$(echo "$STATE" | jq -r '.cycle_count // 0')
 
-DIFF=$(git diff --cached --stat 2>/dev/null)
-DIFF_HASH=$(echo "$DIFF" | md5sum | cut -d' ' -f1)
+DIFF=$(git -C "$PAYLOAD_CWD" diff --cached --stat 2>/dev/null)
+# 注意：git diff 输出可能包含换行符，必须用 echo -n 计算 hash
+DIFF_HASH=$(echo -n "$DIFF" | md5sum | cut -d' ' -f1)
 SAVED_HASH=$(echo "$STATE" | jq -r '.diff_hash // ""')
 
 log_hook "DEBUG" "$cmd" "state_check" "current_state=$CURRENT_STATE approved=$APPROVED cycle=$CYCLE_COUNT diff_hash=$DIFF_HASH saved_hash=$SAVED_HASH"
