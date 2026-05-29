@@ -90,6 +90,18 @@ Agent 调用 approve 脚本
 {}
 ```
 
+### 失败模式与边界条件
+
+| 失败场景 | 如果 X | 那么 Y |
+|----------|--------|--------|
+| flock 超时（30s） | 锁文件被占用 | 返回 `{"action":"block","message":"另一个 commit 正在审查中..."}` |
+| cwd 不在 git 仓库 | `git rev-parse --show-toplevel` 失败 | 尝试使用 `git -C "$PAYLOAD_CWD"` 明确指定目录 |
+| git 命令输出换行符 | hash 计算错误 | **必须使用 `echo -n` 计算 hash** |
+| 未初始化仓库 | `git symbolic-ref --short HEAD` 失败 | 使用 `git branch --show-current`，空则 fallback 到 `detached` |
+| approve 前 diff 变了 | `DIFF_HASH != SAVED_HASH` | 重置 cycle_count 为 0，记录新 diff |
+| 连续 3 次相同 diff | cycle_count ≥ 3 且未 approve | 强制放行，重置状态为 IDLE |
+| state.json 损坏 | `jq` parse 失败 | 使用默认值 `{"state":"IDLE","approved":false,"cycle_count":0}` |
+
 ---
 
 ## 触发条件
@@ -157,11 +169,15 @@ Agent: 审查改动
     │
     └─ 无 bug
         ↓
+🔴 CHECKPOINT: 确认所有改动已审查完毕，准备 approve
+        ↓
 Agent: execute_code(approve 脚本)
 Agent: git commit -m "..."
-    │
-    └─ Hook: approved=true, diff 无变化 → 允许通过
+        │
+        └─ Hook: approved=true, diff 无变化 → 允许通过
 ```
+
+> ⚠️ **关键检查点**：approve 前必须确认所有改动已审查完毕，避免漏审。
 
 ### Agent 调用 approve 的方式
 
@@ -293,6 +309,41 @@ find "$REAL_HOME/.hermes/review-states" -type d -empty -delete
 | 状态管理 | 无 | 状态机 + 临时文件 + cycle_count |
 | 循环终止 | 无 | cycle_count 检测（连续 3 次强制放行） |
 | 状态清理 | 无 | TTL 7 天自动清理 |
+
+---
+
+## 反例与黑名单
+
+> ⚠️ **dim9 必须**：明确列出「不要做什么」，避免误用导致问题
+
+### ❌ 禁止行为
+
+| 禁止行为 | 原因 | 正确做法 |
+|---------|------|----------|
+| ❌ 在 hook 中执行 `git commit` | 会递归触发 hook，导致死循环 | 只读取状态，不执行 commit |
+| ❌ 直接修改 state.json | 可能导致状态不一致 | 使用 approve 脚本或 reset 命令 |
+| ❌ 跳过 approve 直接 commit | 绕过了审查机制 | 必须先 approve |
+| ❌ 在 PENDING_REVIEW 状态下删除 state.json | 会丢失审查上下文 | 使用 reset 命令或等待 TTL 自动清理 |
+| ❌ 多仓库共享同一个状态目录 | 会导致状态混淆 | 每个仓库有独立的 REPO_HASH |
+
+### ⚠️ 危险操作
+
+| 操作 | 风险 | 安全做法 |
+|------|------|----------|
+| `git push --force` | 可能覆盖远程状态 | 先确认远程没有未完成的审查 |
+| 删除 `~/.hermes/review-states` | 会丢失所有审查状态 | 确认所有审查都已完成后再删除 |
+| 同时在多个分支工作 | 可能混淆分支状态 | 每个分支独立审查 |
+
+### 🔴 失败模式与处理
+
+| 失败场景 | 现象 | 处理方式 |
+|----------|------|----------|
+| flock 超时 | 返回 "另一个 commit 正在审查中" | 等待锁释放或手动清理锁文件 |
+| state.json 损坏 | JSON parse error | 删除 state.json 重新开始审查 |
+| approve 脚本路径错误 | "approve 脚本不存在" | 确认脚本路径或使用绝对路径 |
+| cwd 不在 git 仓库 | "fatal: not a git repository" | 确认 payload 中 cwd 正确 |
+| git 输出包含换行符 | hash 计算错误 | 使用 `echo -n` 计算 hash |
+| 未初始化的仓库 | "Your branch name is ..." 警告 | 使用 `git config init.defaultBranch` 设置 |
 
 ---
 

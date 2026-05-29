@@ -118,12 +118,12 @@ if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 3 ]; then
     exit 0
 fi
 
-# diff 有变化，重置状态
+# diff 有变化，重置状态（新修改）
 if [ "$DIFF_HASH" != "$SAVED_HASH" ]; then
     echo "$DIFF" > "$CONTEXT_FILE"
-    NEW_CYCLE=$((CYCLE_COUNT + 1))
-    echo "{\"state\":\"PENDING_REVIEW\",\"approved\":false,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":$NEW_CYCLE}" > "$STATE_FILE"
-    log_hook "INFO" "$cmd" "blocked" "diff changed, cycle_count=$NEW_CYCLE"
+    # diff 变化时重置 cycle_count（新修改，不需要累加）
+    echo "{\"state\":\"PENDING_REVIEW\",\"approved\":false,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":0}" > "$STATE_FILE"
+    log_hook "INFO" "$cmd" "blocked" "diff changed, new review"
     MSG="待审查改动已写入 $CONTEXT_FILE\n审查完成后，运行：python3 $REAL_HOME/self-review-skill/scripts/review_approve.py 2>/dev/null || python3 ~/self-review-skill/scripts/review_approve.py"
     printf '{"action":"block","message":"%s"}\n' "$MSG"
     exit 0
@@ -131,7 +131,16 @@ fi
 
 # diff 无变化，检查 approved
 if [ "$CURRENT_STATE" = "PENDING_REVIEW" ] && [ "$APPROVED" = "false" ]; then
-    log_hook "WARN" "$cmd" "blocked" "pending review, not approved"
+    # 循环检测：diff 无变化但未 approved，每次都增加 cycle_count
+    NEW_CYCLE=$((CYCLE_COUNT + 1))
+    echo "{\"state\":\"PENDING_REVIEW\",\"approved\":false,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":$NEW_CYCLE}" > "$STATE_FILE"
+    log_hook "WARN" "$cmd" "blocked" "pending review, not approved, cycle=$NEW_CYCLE"
+    if [ "$NEW_CYCLE" -ge 3 ]; then
+        log_hook "INFO" "$cmd" "force_allow" "cycle_count=$NEW_CYCLE >= 3, forcing allow"
+        echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
+        printf '{}\n'
+        exit 0
+    fi
     MSG="请先运行 approve：python3 $REAL_HOME/self-review-skill/scripts/review_approve.py 2>/dev/null || python3 ~/self-review-skill/scripts/review_approve.py"
     printf '{"action":"block","message":"%s"}\n' "$MSG"
     exit 0

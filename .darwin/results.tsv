@@ -1,0 +1,2 @@
+skill	name	baseline_score	struct短板	effect短板	test_details	phase1_date
+self-review-skill	self-review-skill	49.7	dim9(反例)3分 dim3(失败模式)5分 dim4(检查点)3分	循环检测bug	1.normal_block:✅ 2.approve:✅ 3.cycle_detect:⚠️ 4.fix_bug:✅ 5.multi_fix:⚠️	2026-05-30
