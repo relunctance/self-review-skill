@@ -47,8 +47,15 @@ def get_repo_info(cwd: str | None = None) -> tuple[str, str, str, str]:
     - 使用 git symbolic-ref --short HEAD
     - 正常分支：返回分支名（如 master）
     - detached HEAD 或无 commits：返回 detached
+
+    Raises:
+        SystemExit: cwd 指定但目录不存在时退出
     """
-    git_cwd = cwd if cwd and os.path.isdir(cwd) else os.getcwd()
+    # cwd 必须存在，不允许降级
+    if cwd is not None and not os.path.isdir(cwd):
+        logger.error(f"指定的工作目录不存在: {cwd}")
+        sys.exit(1)
+    git_cwd = cwd if cwd else os.getcwd()
 
     try:
         repo_path = subprocess.check_output(
@@ -80,6 +87,15 @@ def get_repo_info(cwd: str | None = None) -> tuple[str, str, str, str]:
         sys.exit(1)
 
 
+def parse_args():
+    """解析命令行参数"""
+    import argparse
+    parser = argparse.ArgumentParser(description="self-review-skill approve 脚本")
+    parser.add_argument("--cwd", help="指定工作目录")
+    args = parser.parse_args()
+    return args.cwd
+
+
 def try_read_cwd_from_stdin() -> str | None:
     """尝试从 stdin 读取 JSON payload 并提取 cwd 字段"""
     try:
@@ -94,7 +110,11 @@ def try_read_cwd_from_stdin() -> str | None:
 
         payload = json.loads(stdin_data)
         cwd = payload.get("cwd", "")
-        if cwd and os.path.isdir(cwd):
+        # cwd 必须存在，不允许降级
+        if cwd and not os.path.isdir(cwd):
+            logger.error(f"stdin payload 中指定的工作目录不存在: {cwd}")
+            return None
+        if cwd:
             return cwd
         return None
     except (json.JSONDecodeError, OSError):
@@ -106,10 +126,19 @@ def main():
         # 获取真实 home
         real_home = get_real_home()
 
-        # 尝试从 stdin 获取 cwd
-        cwd = try_read_cwd_from_stdin()
-        if cwd:
-            logger.info(f"从 stdin payload 获取 cwd: {cwd}")
+        # 获取命令行参数
+        cli_cwd = parse_args()
+        if cli_cwd:
+            logger.info(f"从命令行参数获取 cwd: {cli_cwd}")
+            if not os.path.isdir(cli_cwd):
+                logger.error(f"指定的工作目录不存在: {cli_cwd}")
+                sys.exit(1)
+            cwd = cli_cwd
+        else:
+            # 尝试从 stdin 获取 cwd
+            cwd = try_read_cwd_from_stdin()
+            if cwd:
+                logger.info(f"从 stdin payload 获取 cwd: {cwd}")
 
         # 获取仓库和分支信息
         repo_path, branch, repo_hash, branch_hash = get_repo_info(cwd)
