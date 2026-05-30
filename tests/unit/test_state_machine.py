@@ -62,18 +62,18 @@ def test_diff_changed_resets_approved():
 
 
 def test_cycle_count_detection():
-    """测试：连续 3 次 diff 相同应该强制放行"""
+    """测试：连续 3 次 diff 相同应该强制放行（第3次 = cycle_count=2）"""
     with tempfile.TemporaryDirectory() as tmpdir:
         state_file = Path(tmpdir) / "state.json"
-        # 模拟：连续 3 次相同 diff
-        state_file.write_text('{"state":"PENDING_REVIEW","approved":false,"diff_hash":"same_hash","cycle_count":3}')
+        # 模拟：连续 3 次相同 diff（第3次时 cycle_count=2）
+        state_file.write_text('{"state":"PENDING_REVIEW","approved":false,"diff_hash":"same_hash","cycle_count":2}')
 
         state = json.loads(state_file.read_text())
         diff_hash = "same_hash"
         cycle_count = state["cycle_count"]
 
-        # 循环检测逻辑
-        if diff_hash == state["diff_hash"] and cycle_count >= 3:
+        # 循环检测逻辑（阈值 >= 2）
+        if diff_hash == state["diff_hash"] and cycle_count >= 2:
             # 强制放行
             state = {"state": "IDLE", "approved": False, "diff_hash": "", "cycle_count": 0}
             assert state["state"] == "IDLE"

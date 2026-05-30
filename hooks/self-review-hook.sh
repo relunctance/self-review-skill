@@ -111,7 +111,7 @@ SAVED_HASH=$(echo "$STATE" | jq -r '.diff_hash // ""')
 log_hook "DEBUG" "$cmd" "state_check" "current_state=$CURRENT_STATE approved=$APPROVED cycle=$CYCLE_COUNT diff_hash=$DIFF_HASH saved_hash=$SAVED_HASH"
 
 # === 循环检测：连续 3 次 diff 相同，强制放行 ===
-if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 3 ]; then
+if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 2 ]; then
     log_hook "INFO" "$cmd" "force_allow" "cycle_count=$CYCLE_COUNT, forcing allow"
     echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
     printf '{}\n'
@@ -135,8 +135,8 @@ if [ "$CURRENT_STATE" = "PENDING_REVIEW" ] && [ "$APPROVED" = "false" ]; then
     NEW_CYCLE=$((CYCLE_COUNT + 1))
     echo "{\"state\":\"PENDING_REVIEW\",\"approved\":false,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":$NEW_CYCLE}" > "$STATE_FILE"
     log_hook "WARN" "$cmd" "blocked" "pending review, not approved, cycle=$NEW_CYCLE"
-    if [ "$NEW_CYCLE" -ge 3 ]; then
-        log_hook "INFO" "$cmd" "force_allow" "cycle_count=$NEW_CYCLE >= 3, forcing allow"
+    if [ "$NEW_CYCLE" -ge 2 ]; then
+        log_hook "INFO" "$cmd" "force_allow" "cycle_count=$NEW_CYCLE >= 2, forcing allow"
         echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
         printf '{}\n'
         exit 0

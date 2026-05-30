@@ -109,7 +109,7 @@ Agent 调用 approve 脚本
 | git 命令输出换行符 | hash 计算错误 | **必须使用 `echo -n` 计算 hash** | 改用 `md5sum \| cut -c1-8` |
 | 未初始化仓库 | `git symbolic-ref --short HEAD` 失败 | 使用 `git branch --show-current`，空则 fallback 到 `detached` | 检查仓库是否已 `git init` |
 | approve 前 diff 变了 | `DIFF_HASH != SAVED_HASH` | 重置 cycle_count 为 0，记录新 diff | 需重新审查新 diff |
-| 连续 3 次相同 diff | cycle_count ≥ 3 且未 approve | 强制放行，重置状态为 IDLE | 可用 reset 命令重置 |
+| 连续 3 次相同 diff | cycle_count ≥ 2 且未 approve | 强制放行，重置状态为 IDLE | 可用 reset 命令重置 |
 | state.json 损坏 | `jq` parse 失败 | 使用默认值 `{"state":"IDLE","approved":false,"cycle_count":0}` | 删除 state.json 重新开始 |
 | approve 后再次被 block | diff_hash 为空导致比较失败 | **修复：approve 保留原有 diff_hash** | 检查 approve 脚本版本 ≥ 1.1.1 |
 
@@ -345,10 +345,10 @@ flock -w 30 3 || {
 
 ## 循环检测
 
-连续 3 次 diff 相同，强制放行避免死循环：
+连续 3 次 diff 相同，强制放行避免死循环（第3次触发时 cycle_count=2）：
 
 ```bash
-if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 3 ]; then
+if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 2 ]; then
     echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
     printf '{}\n'
     exit 0
