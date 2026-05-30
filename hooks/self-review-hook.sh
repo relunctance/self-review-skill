@@ -113,7 +113,8 @@ log_hook "DEBUG" "$cmd" "state_check" "current_state=$CURRENT_STATE approved=$AP
 # === 循环检测：连续 3 次 diff 相同，强制放行 ===
 if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 2 ]; then
     log_hook "INFO" "$cmd" "force_allow" "cycle_count=$CYCLE_COUNT, forcing allow"
-    echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
+    # 方案B：保留 diff_hash，设置 approved=true，避免下次相同 diff 重新计数
+    echo "{\"state\":\"IDLE\",\"approved\":true,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":0}" > "$STATE_FILE"
     printf '{}\n'
     exit 0
 fi
@@ -137,7 +138,8 @@ if [ "$CURRENT_STATE" = "PENDING_REVIEW" ] && [ "$APPROVED" = "false" ]; then
     log_hook "WARN" "$cmd" "blocked" "pending review, not approved, cycle=$NEW_CYCLE"
     if [ "$NEW_CYCLE" -ge 2 ]; then
         log_hook "INFO" "$cmd" "force_allow" "cycle_count=$NEW_CYCLE >= 2, forcing allow"
-        echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
+        # 方案B：保留 diff_hash，设置 approved=true，避免下次相同 diff 重新计数
+        echo "{\"state\":\"IDLE\",\"approved\":true,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":0}" > "$STATE_FILE"
         printf '{}\n'
         exit 0
     fi

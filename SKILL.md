@@ -347,9 +347,12 @@ flock -w 30 3 || {
 
 连续 3 次 diff 相同，强制放行避免死循环（第3次触发时 cycle_count=2）：
 
+**方案B**：保留 diff_hash，设置 approved=true，避免下次相同 diff 重新计数
+
 ```bash
 if [ "$DIFF_HASH" = "$SAVED_HASH" ] && [ "$CYCLE_COUNT" -ge 2 ]; then
-    echo '{"state":"IDLE","approved":false,"diff_hash":"","cycle_count":0}' > "$STATE_FILE"
+    # 强制放行，保留 diff_hash，设置 approved=true
+    echo "{\"state\":\"IDLE\",\"approved\":true,\"diff_hash\":\"$DIFF_HASH\",\"cycle_count\":0}" > "$STATE_FILE"
     printf '{}\n'
     exit 0
 fi

@@ -74,9 +74,11 @@ def test_cycle_count_detection():
 
         # 循环检测逻辑（阈值 >= 2）
         if diff_hash == state["diff_hash"] and cycle_count >= 2:
-            # 强制放行
-            state = {"state": "IDLE", "approved": False, "diff_hash": "", "cycle_count": 0}
+            # 强制放行，方案B：保留 diff_hash，设置 approved=True
+            state = {"state": "IDLE", "approved": True, "diff_hash": diff_hash, "cycle_count": 0}
             assert state["state"] == "IDLE"
+            assert state["approved"] == True
+            assert state["diff_hash"] == diff_hash
             print("✅ test_cycle_count_detection passed")
 
 
