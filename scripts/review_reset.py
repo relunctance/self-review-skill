@@ -16,6 +16,7 @@ import logging
 import os
 import subprocess
 import sys
+import fcntl
 from pathlib import Path
 
 # 配置日志
@@ -132,13 +133,14 @@ def reset_review_state(cwd: str) -> bool:
 
     # 读取旧状态
     try:
-        old_state = json.loads(state_file.read_text())
+        with open(state_file) as f:
+            old_state = json.load(f)
         old_state_str = json.dumps(old_state, ensure_ascii=False)
     except (json.JSONDecodeError, OSError):
         old_state_str = "(损坏的 JSON)"
 
-    # 删除状态文件
-    state_file.unlink()
+    # 使用 flock 删除状态文件
+    delete_state_with_lock(state_file)
     logger.info(f"已重置状态: {repo_path} ({branch}), 旧状态: {old_state_str}")
     print(f"✅ 已重置状态: {repo_path} ({branch})")
 
@@ -149,6 +151,42 @@ def reset_review_state(cwd: str) -> bool:
         pass  # 目录非空，忽略
 
     return True
+
+
+def delete_state_with_lock(state_file: Path, timeout: int = 30) -> bool:
+    """删除状态文件，使用 flock 保护（与 hook 行为一致）
+
+    Args:
+        state_file: 状态文件路径
+        timeout: flock 超时秒数
+
+    Returns:
+        True 如果删除成功，False 如果文件不存在
+
+    Raises:
+        SystemExit: 获取锁失败时退出
+    """
+    if not state_file.exists():
+        return False
+
+    lock_file = state_file.parent / ".lock"
+    lock_file.touch(exist_ok=True)
+
+    try:
+        with open(lock_file, "w") as lock_fd:
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+            try:
+                if state_file.exists():
+                    state_file.unlink()
+                    return True
+                return False
+            finally:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+    except (IOError, OSError) as e:
+        if "Resource temporarily unavailable" in str(e) or "Lock wait timeout" in str(e):
+            logger.error(f"获取锁超时（{timeout}秒）：另一个进程正在操作状态文件")
+            sys.exit(1)
+        raise
 
 
 def main():
