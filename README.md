@@ -146,7 +146,7 @@ Hook 脚本自动清理 **7 天前**的状态文件。
 
 - [gql-bots #147](https://github.com/relunctance/gql-bots/issues/147) — 设计文档
 - [Hermes Shell Hooks](https://github.com/relunctance/hermes-agent) — Hook 机制
-- [ECC hookify](https://github.com/claude-code-hooks/hookify) — 参考实现
+- ~~[ECC hookify](https://github.com/relunctance/ecc)~~（已废弃，仅作设计参考）
 
 ## 📝 Changelog
 
