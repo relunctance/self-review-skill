@@ -14,7 +14,7 @@
 ## 🎯 触发条件
 
 当需要进行以下操作时使用：
-- gql-bots 项目中任何 commit 前
+- 任何项目的 commit 前
 - 需要确保代码改动经过自检
 - 需要记录每次 commit 的审查轨迹
 
@@ -144,7 +144,6 @@ Hook 脚本自动清理 **7 天前**的状态文件。
 
 ## 📚 参考
 
-- [gql-bots #147](https://github.com/relunctance/gql-bots/issues/147) — 设计文档
 - [Hermes Shell Hooks](https://github.com/relunctance/hermes-agent) — Hook 机制
 - ~~[ECC hookify](https://github.com/relunctance/ecc)~~（已废弃，仅作设计参考）
 

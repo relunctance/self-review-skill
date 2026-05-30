@@ -211,10 +211,6 @@ Agent: git commit -m "fix: 修复 XX bug"
     └─ Hook: approved=true, diff 无变化 → 放行 ✅
 ```
 
-**与 gql-bots 集成**：
-
-gql-bots 的 coder/review 角色在每次 commit 前自动触发此 hook，无需手动调用。
-
 > ⚠️ **关键检查点**：approve 前必须确认所有改动已审查完毕，避免漏审。
 
 ### 重置审查状态
@@ -372,25 +368,6 @@ find "$REAL_HOME/.hermes/review-states" -type d -empty -delete
 
 ---
 
-## 与 gql-bots 集成
-
-| 角色 | 集成方式 | 说明 |
-|------|----------|------|
-| coder | Hook 自动触发 | 每次 `git commit` 前拦截 |
-| review | 读取 context.json | 审查 diff 内容 |
-| qa | 检查 state.json | 确认审查状态 |
-
-**注册命令**：
-```bash
-hermes hooks add --event pre_tool_call \
-  --matcher terminal \
-  --command "~/self-review-skill/hooks/self-review-hook.sh"
-```
-
-**状态文件路径**：`~/.hermes/review-states/{repo_hash}/{branch_hash}/`
-
----
-
 ## 与 ECC hookify 的区别
 
 | 维度 | ECC 原版 | self-review-skill |
@@ -443,4 +420,3 @@ hermes hooks add --event pre_tool_call \
 
 - ECC hookify: ~~https://github.com/relunctance/ecc~~（已废弃，仅作设计参考）
 - Hermes Hooks: `shell_hooks.py`
-- gql-bots #147: https://github.com/relunctance/gql-bots/issues/147
