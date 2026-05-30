@@ -215,15 +215,15 @@ self-review-skill/
 
 ## 关键约束
 
-### ❌ 禁止行为
+### ❌ 禁止行为（三段式 fallback）
 
-| 禁止行为 | 后果 | 正确做法 |
-|---------|------|----------|
-| ❌ 在 hook 中执行 `git commit` | 递归触发 hook → 死循环 | 只读取状态，不执行 commit |
-| ❌ 直接修改 state.json | 状态不一致 → 审查失效 | 使用 approve 脚本或 reset 命令 |
-| ❌ 跳过 approve 直接 commit | 绕过审查机制 → bug 上线 | 必须先 approve 再 commit |
-| ❌ approve 后又修改文件但不重新 approve | 漏审 → bug 上线 | 修改后必须重新 approve |
-| ❌ 多仓库共享同一个状态目录 | 状态混淆 → 误判 | 每个仓库有独立的 REPO_HASH |
+| # | 禁止行为 | 触发条件 | 一线修复 | 仍失败兜底 |
+|---|---------|---------|---------|-----------|
+| 1 | 在 hook 中执行 `git commit` | 递归调用，死循环 | 只读取状态，不执行 commit | 检查调用栈深度，超阈值强制退出 |
+| 2 | 直接修改 state.json | 状态不一致，审查失效 | 使用 approve 脚本或 reset 命令 | 删除状态文件重新开始：`rm -rf ~/.hermes/review-states/{hash}` |
+| 3 | 跳过 approve 直接 commit | 绕过审查机制，bug 上线 | 必须先 approve 再 commit | hook 会持续 block，直到 approve |
+| 4 | approve 后修改文件但不重新 approve | 漏审，bug 上线 | 修改后必须重新 approve | hook 检测到 diff 变化会重新 block |
+| 5 | 多仓库共享同一个状态目录 | 状态混淆，误判 | 每个仓库有独立的 REPO_HASH | 用 `review_status.py --json` 确认当前仓库路径 |
 
 ---
 
