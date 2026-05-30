@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "prompt": "我在 /tmp/test-repo 修改了 file.txt，执行 git add 和 git commit，Hook 应该拦截这个 commit",
+    "expected": "Hook 返回 {\"action\": \"block\", \"message\": \"请审查改动...\"}",
+    "dimension": "dim2-工作流清晰度"
+  },
+  {
+    "id": 2,
+    "prompt": "我修改了代码但有 bug，执行 approve 后又修复了，再执行 commit，Hook 应该再次拦截",
+    "expected": "Hook 返回 {\"action\": \"block\"}（因为 diff 变了，需要重新审查）",
+    "dimension": "dim3-失败模式编码"
+  },
+  {
+    "id": 3,
+    "prompt": "连续 3 次相同的 diff 执行 commit，第三次应该强制放行",
+    "expected": "Hook 返回 {}（空对象，允许通过）",
+    "dimension": "dim3-循环检测"
+  }
+]

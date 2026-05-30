@@ -198,15 +198,18 @@ def main():
         state_dir.mkdir(parents=True, exist_ok=True)
         state_file = state_dir / "state.json"
 
-        # 读取当前状态用于日志
+        # 读取当前状态用于日志和保留 diff_hash
         old_state = read_state_with_lock(state_file)
         if old_state:
             logger.info(f"当前状态: {old_state.get('state')}, approved: {old_state.get('approved')}")
+            # 保留原有的 diff_hash，避免 approve 后再次 commit 被 block
+            old_diff_hash = old_state.get("diff_hash", "")
         else:
             logger.info("无现有状态，创建新状态")
+            old_diff_hash = ""
 
-        # 更新 approved 标志
-        state = {"state": "PENDING_REVIEW", "approved": True, "diff_hash": "", "cycle_count": 0}
+        # 更新 approved 标志，保留原有 diff_hash
+        state = {"state": "PENDING_REVIEW", "approved": True, "diff_hash": old_diff_hash, "cycle_count": 0}
 
         # 使用 flock 写入状态文件
         write_state_with_lock(state_file, state)
