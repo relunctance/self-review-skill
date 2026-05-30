@@ -1,7 +1,7 @@
 ---
 name: self-review-skill
 description: 每次 commit 前强制审查改动，减少 bug 率。触发条件：需要进行 git commit 前、发现潜在 bug 需要审查、多 Agent 并行提交需要锁保护。
-version: "1.1.0"
+version: "1.1.1"
 author: relunctance
 license: MIT
 category: development
@@ -100,15 +100,18 @@ Agent 调用 approve 脚本
 
 ### 失败模式与边界条件
 
-| 失败场景 | 如果 X | 那么 Y |
-|----------|--------|--------|
-| flock 超时（30s） | 锁文件被占用 | 返回 `{"action":"block","message":"另一个 commit 正在审查中..."}` |
-| cwd 不在 git 仓库 | `git rev-parse --show-toplevel` 失败 | 尝试使用 `git -C "$PAYLOAD_CWD"` 明确指定目录 |
-| git 命令输出换行符 | hash 计算错误 | **必须使用 `echo -n` 计算 hash** |
-| 未初始化仓库 | `git symbolic-ref --short HEAD` 失败 | 使用 `git branch --show-current`，空则 fallback 到 `detached` |
-| approve 前 diff 变了 | `DIFF_HASH != SAVED_HASH` | 重置 cycle_count 为 0，记录新 diff |
-| 连续 3 次相同 diff | cycle_count ≥ 3 且未 approve | 强制放行，重置状态为 IDLE |
-| state.json 损坏 | `jq` parse 失败 | 使用默认值 `{"state":"IDLE","approved":false,"cycle_count":0}` |
+**三段式 fallback 表**（触发条件 / 一线修复 / 仍失败兜底）：
+
+| 失败场景 | 触发条件 | 一线修复 | 仍失败兜底 |
+|----------|----------|----------|------------|
+| flock 超时（30s） | 锁文件被占用 | 返回 `{"action":"block","message":"另一个 commit 正在审查中..."}` | 等待锁释放或手动清理 `$STATE_DIR/.lock` |
+| cwd 不在 git 仓库 | `git rev-parse --show-toplevel` 失败 | 尝试使用 `git -C "$PAYLOAD_CWD"` 明确指定目录 | payload 中必须包含有效 cwd 字段 |
+| git 命令输出换行符 | hash 计算错误 | **必须使用 `echo -n` 计算 hash** | 改用 `md5sum \| cut -c1-8` |
+| 未初始化仓库 | `git symbolic-ref --short HEAD` 失败 | 使用 `git branch --show-current`，空则 fallback 到 `detached` | 检查仓库是否已 `git init` |
+| approve 前 diff 变了 | `DIFF_HASH != SAVED_HASH` | 重置 cycle_count 为 0，记录新 diff | 需重新审查新 diff |
+| 连续 3 次相同 diff | cycle_count ≥ 3 且未 approve | 强制放行，重置状态为 IDLE | 可用 reset 命令重置 |
+| state.json 损坏 | `jq` parse 失败 | 使用默认值 `{"state":"IDLE","approved":false,"cycle_count":0}` | 删除 state.json 重新开始 |
+| approve 后再次被 block | diff_hash 为空导致比较失败 | **修复：approve 保留原有 diff_hash** | 检查 approve 脚本版本 ≥ 1.1.1 |
 
 ---
 
@@ -156,39 +159,61 @@ hermes chat -s self-review-skill
 
 ### Agent 工作流
 
+**前置条件**：Hook 已注册（见安装流程）
+
+**步骤1：修改代码**
 ```
-Agent: 修改代码（Write/Edit）
-    ↓
+Agent: Write/Edit 修改 file.py
+```
+
+**步骤2：暂存改动**
+```
 Agent: git add file.py
-    ↓
-Agent: git commit -m "..."
+```
+
+**步骤3：触发 Hook 拦截**
+```
+Agent: git commit -m "fix: 修复 XX bug"
     │
-    ├─ Hook: 状态=PENDING_REVIEW
-    │       diff 写入 ~/.hermes/review-states/{hash}/context.json
-    │       返回 block + "请审查，完成后运行 approve 脚本"
+    ├─ Hook 拦截
+    │   1. 计算 diff hash
+    │   2. 读取/创建 state.json
+    │   3. diff 有变化？→ 更新 context.json
+    │   4. approved=true 且 diff 不变？→ 放行
+    │   5. 否则 → block + 提示
     │
-    ▼
-Agent: 读取 context.json 审查改动
-Agent: 审查改动
+    └─ 返回 {"action": "block", "message": "..."}
+```
+
+**步骤4：审查改动**
+```
+Agent: 读取 ~/.hermes/review-states/{hash}/context.json
+Agent: 审查 diff 内容
     │
     ├─ 发现 bug
-    │   ↓
-    │   🔴 CHECKPOINT: 确认修复方案
-    │   Agent: 修复 bug
-    │   Agent: git add + git commit（再次触发 hook）
-    │   ↓
-    │   Hook: diff 有变化 → 更新临时文件 + block
-    │   （循环，直到无 bug）
+    │   → 修复 bug
+    │   → 返回步骤2（重新暂存）
     │
     └─ 无 bug
-        ↓
-🔴 CHECKPOINT: 确认所有改动已审查完毕，准备 approve
-        ↓
-Agent: execute_code(approve 脚本)
-Agent: git commit -m "..."
-        │
-        └─ Hook: approved=true, diff 无变化 → 允许通过
+        → 继续步骤5
 ```
+
+**步骤5：Approve**
+```
+🔴 CHECKPOINT: 确认所有改动已审查完毕
+Agent: execute_code(approve 脚本)
+```
+
+**步骤6：再次 Commit**
+```
+Agent: git commit -m "fix: 修复 XX bug"
+    │
+    └─ Hook: approved=true, diff 无变化 → 放行 ✅
+```
+
+**与 gql-bots 集成**：
+
+gql-bots 的 coder/review 角色在每次 commit 前自动触发此 hook，无需手动调用。
 
 > ⚠️ **关键检查点**：approve 前必须确认所有改动已审查完毕，避免漏审。
 
