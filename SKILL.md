@@ -1,7 +1,7 @@
 ---
 name: self-review-skill
 description: 每次 commit 前强制审查改动，减少 bug 率。触发条件：需要进行 git commit 前、发现潜在 bug 需要审查、多 Agent 并行提交需要锁保护。
-version: "1.1.1"
+version: "1.1.2"
 author: relunctance
 license: MIT
 category: development
@@ -372,6 +372,25 @@ find "$REAL_HOME/.hermes/review-states" -type d -empty -delete
 
 ---
 
+## 与 gql-bots 集成
+
+| 角色 | 集成方式 | 说明 |
+|------|----------|------|
+| coder | Hook 自动触发 | 每次 `git commit` 前拦截 |
+| review | 读取 context.json | 审查 diff 内容 |
+| qa | 检查 state.json | 确认审查状态 |
+
+**注册命令**：
+```bash
+hermes hooks add --event pre_tool_call \
+  --matcher terminal \
+  --command "~/self-review-skill/hooks/self-review-hook.sh"
+```
+
+**状态文件路径**：`~/.hermes/review-states/{repo_hash}/{branch_hash}/`
+
+---
+
 ## 与 ECC hookify 的区别
 
 | 维度 | ECC 原版 | self-review-skill |
@@ -397,6 +416,8 @@ find "$REAL_HOME/.hermes/review-states" -type d -empty -delete
 | ❌ 跳过 approve 直接 commit | 绕过审查机制 → bug 上线 | 必须先 approve 再 commit |
 | ❌ 在 PENDING_REVIEW 状态下删除 state.json | 丢失审查上下文 | 使用 reset 命令或等待 TTL 清理 |
 | ❌ 多仓库共享同一个状态目录 | 状态混淆 → 误判 | 每个仓库有独立的 REPO_HASH |
+| ❌ 修改其他分支的状态文件 | 状态跨分支污染 | 使用 reset 或等待自动清理 |
+| ❌ approve 后又修改文件但不重新 approve | 漏审 → bug 上线 | 修改后必须重新 approve |
 
 ### ⚠️ 危险操作
 
