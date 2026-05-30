@@ -41,10 +41,10 @@ metadata:
 
 **操作顺序**：
 1. Hook 拦截 git commit
-2. LLM 读取 diff 内容审查
-3. 发现 bug → 修复 → 再次审查
-4. 无 bug → 执行 approve 脚本
-5. 再次 commit → 通过
+2. 🔴 **CHECKPOINT**：读取 `~/.hermes/review-states/{hash}/context.json` 审查 diff
+3. 发现 bug → 修复 → 再次审查（回到步骤 2）
+4. 🛑 **CHECKPOINT**：确认 diff 无变化后，执行 approve 脚本
+5. 再次 commit → ✅ 放行
 
 ---
 
@@ -126,16 +126,16 @@ Agent: 修改代码 → git add → git commit
     │
     ├─ Hook 拦截 → 返回 {"action":"block","message":"请审查..."}
     │
-    ├─ 读取 ~/.hermes/review-states/{hash}/context.json
+    ├─ 🔴 CHECKPOINT：读取 ~/.hermes/review-states/{hash}/context.json
     │
     ├─ 审查 diff
-    │   ├─ 发现 bug → 修复 → git add → git commit（再次拦截）
+    │   ├─ 发现 bug → 修复 → git add → git commit（再次拦截，回到上一步）
     │   └─ 无 bug → 继续
     │
-    └─ 执行 approve：
+    └─ 🛑 CHECKPOINT：确认 diff 无变化后，执行 approve：
        python3 ~/self-review-skill/scripts/review_approve.py
 
-       然后重新 commit → Hook 放行 ✅
+       然后重新 commit → ✅ Hook 放行
 ```
 
 ### 3. 查看审查状态
