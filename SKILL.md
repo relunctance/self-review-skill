@@ -365,6 +365,6 @@ find "$REAL_HOME/.hermes/review-states" -type d -empty -delete
 
 ## 参考
 
-- ECC hookify: https://github.com/relunctance/ecc
+- ECC hookify: https://github.com/claude-code-hooks/hookify
 - Hermes Hooks: `shell_hooks.py`
 - gql-bots #147: https://github.com/relunctance/gql-bots/issues/147
