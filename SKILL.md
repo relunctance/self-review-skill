@@ -1,6 +1,6 @@
 ---
 name: self-review-skill
-description: 每次 commit 前强制审查改动，减少 bug 率
+description: 每次 commit 前强制审查改动，减少 bug 率。触发条件：需要进行 git commit 前、发现潜在 bug 需要审查、多 Agent 并行提交需要锁保护。
 version: "1.1.0"
 author: relunctance
 license: MIT
@@ -11,6 +11,14 @@ tags:
   - git
   - quality
   - commit-review
+trigger:
+  - git commit 前
+  - commit 前审查
+  - 提交前检查
+  - 每次 commit
+  - 小步迭代
+  - self-review
+  - 强制审查
 metadata:
   hermes:
     platforms:
@@ -165,6 +173,7 @@ Agent: 审查改动
     │
     ├─ 发现 bug
     │   ↓
+    │   🔴 CHECKPOINT: 确认修复方案
     │   Agent: 修复 bug
     │   Agent: git add + git commit（再次触发 hook）
     │   ↓
@@ -207,6 +216,27 @@ result = subprocess.run(
 )
 print(result.stdout)
 ```
+
+**参数说明**：
+
+| 参数 | 格式 | 示例 |
+|------|------|------|
+| `--cwd` | 绝对路径 | `--cwd /home/user/project` |
+| stdin | JSON | `{"cwd": "/home/user/project"}` |
+
+**输出格式**：
+
+```
+✅ Approved: /home/user/project (main)
+📁 State file: ~/.hermes/review-states/{repo_hash}/{branch_hash}/state.json
+```
+
+**返回码**：
+
+| 码 | 含义 |
+|----|------|
+| 0 | 成功 |
+| 1 | 失败（不在 git 仓库、锁超时等） |
 
 ---
 
